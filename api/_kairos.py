@@ -189,7 +189,16 @@ _initialized = False
 def bootstrap() -> None:
     global _initialized
     if not _initialized:
-        initialize_database()
+        try:
+            initialize_database()
+        except Exception:
+            # Read-only database (serverless bundled store) — the shipped DB
+            # already carries the full schema, so read paths work regardless.
+            import logging
+
+            logging.getLogger("kairos.bootstrap").warning(
+                "initialize_database skipped (read-only store?)", exc_info=True
+            )
         _initialized = True
 
 

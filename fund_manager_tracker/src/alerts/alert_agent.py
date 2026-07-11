@@ -4,11 +4,11 @@ import hashlib
 import html
 from pathlib import Path
 
-from src.config import ROOT_DIR
+from src.config import REPORTS_DIR
 from src.utils.db import get_connection, read_sql
 
 
-REPORT_DIR = ROOT_DIR / "reports"
+REPORT_DIR = REPORTS_DIR
 
 
 def _h(value) -> str:

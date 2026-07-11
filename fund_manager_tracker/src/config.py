@@ -24,15 +24,46 @@ try:
 except ImportError:
     pass
 
-DB_PATH = Path(os.getenv("KAIROS_DB_PATH", "fund_data.db"))
-if not DB_PATH.is_absolute():
-    DB_PATH = ROOT_DIR / DB_PATH
+# Serverless platforms (Vercel/AWS Lambda) mount the code directory read-only;
+# only /tmp is writable. Detect that and route all writes there.
+IS_SERVERLESS = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+
+_BUNDLED_DB = ROOT_DIR / "fund_data.db"
+
+
+def _resolve_db_path() -> Path:
+    raw = os.getenv("KAIROS_DB_PATH", "")
+    if raw:
+        path = Path(raw)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+    elif IS_SERVERLESS:
+        path = Path("/tmp/fund_data.db")
+    else:
+        path = _BUNDLED_DB
+    # Seed the writable copy from the bundled read-only store on cold start.
+    if (
+        IS_SERVERLESS
+        and str(path).replace("\\", "/").startswith("/tmp/")
+        and not path.exists()
+        and _BUNDLED_DB.exists()
+    ):
+        import shutil
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_BUNDLED_DB, path)
+    return path
+
+
+DB_PATH = _resolve_db_path()
 DB_IS_EPHEMERAL = str(DB_PATH).replace("\\", "/").startswith("/tmp/")
 
-LOG_DIR = ROOT_DIR / "logs"
-CACHE_DIR = ROOT_DIR / "cache"
+_WRITE_ROOT = Path("/tmp/kairos") if IS_SERVERLESS else ROOT_DIR
+LOG_DIR = _WRITE_ROOT / "logs"
+CACHE_DIR = _WRITE_ROOT / "cache"
+REPORTS_DIR = _WRITE_ROOT / "reports"
 RAW_SID_DIR = CACHE_DIR / "raw_sids"
-LAST_UPDATED_PATH = ROOT_DIR / "last_updated.json"
+LAST_UPDATED_PATH = _WRITE_ROOT / "last_updated.json"
 
 REQUEST_LOG_PATH = LOG_DIR / "requests.log"
 PIPELINE_LOG_PATH = LOG_DIR / "pipeline.log"
@@ -71,4 +102,8 @@ USER_AGENTS = [
 
 def ensure_dirs() -> None:
     for path in (LOG_DIR, CACHE_DIR, RAW_SID_DIR):
-        path.mkdir(parents=True, exist_ok=True)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Read-only filesystem — callers that only read the DB don't care.
+            pass

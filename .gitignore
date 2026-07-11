@@ -40,3 +40,5 @@ fund_manager_tracker/reports/
 # os
 .DS_Store
 Thumbs.db
+
+.vercel

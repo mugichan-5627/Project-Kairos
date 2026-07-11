@@ -3,7 +3,7 @@
   "cleanUrls": true,
   "builds": [
     {
-      "src": "api/**/*.py",
+      "src": "api/[!_]*.py",
       "use": "@vercel/python",
       "config": { "maxLambdaSize": "150mb" }
     },

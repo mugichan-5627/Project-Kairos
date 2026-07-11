@@ -7,6 +7,14 @@ fund_manager_tracker/__pycache__/
 api/__pycache__/
 .vercel/
 .git/
+_archive/
+sent_emails/
+
+# Legacy endpoints not used by the dashboard — keeps function count within
+# the Hobby-plan limit of 12 serverless functions
+api/manager.py
+api/scheme.py
+api/transition.py
 venv/
 .venv/
 node_modules/
