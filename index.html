@@ -1188,6 +1188,16 @@
     <script>
         // Global variables
         const API_BASE = '/api';
+
+        // Privileged actions (pipeline runs, outbound email) require the admin
+        // token in production. Store it once in this browser via:
+        //   localStorage.setItem('kairos_admin_token', '<KAIROS_ADMIN_TOKEN>')
+        function adminHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            const token = localStorage.getItem('kairos_admin_token');
+            if (token) headers['X-Kairos-Admin-Token'] = token;
+            return headers;
+        }
         const PLACEHOLDER_AVATAR = 'assets/managers/placeholder.png?v=neutral-avatar-20260602';
         let metadata = { managers: [], schemes: [] };
 
@@ -1334,7 +1344,7 @@
             
             fetch(`${API_BASE}/admin`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: adminHeaders(),
                 body: JSON.stringify({ task: 'run_pipeline' })
             })
             .then(res => res.json())
@@ -1381,7 +1391,7 @@
             
             fetch(`${API_BASE}/admin`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: adminHeaders(),
                 body: JSON.stringify({ task: 'verify_integrity' })
             })
             .then(res => res.json())
@@ -1544,7 +1554,7 @@
 
             fetch(`${API_BASE}/alerts`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: adminHeaders(),
                 body: JSON.stringify({ email: email, event_id: eventId ? parseInt(eventId) : undefined })
             })
             .then(res => {
@@ -1553,10 +1563,10 @@
             })
             .then(data => {
                 const delivered = data.delivery_status === 'sent';
-                const smtpUsed = delivered && data.method === 'smtp';
+                const smtpUsed = delivered && (data.method === 'smtp' || data.method === 'resend');
 
                 if (smtpUsed) {
-                    badge.innerHTML = `✓ Sent to ${email} via SMTP`;
+                    badge.innerHTML = `✓ Sent to ${email} via ${data.method === 'resend' ? 'Resend' : 'SMTP'}`;
                     badge.style.color = 'var(--color-green)';
                 } else if (data.method === 'local_file') {
                     // Extract relative path from absolute if possible
