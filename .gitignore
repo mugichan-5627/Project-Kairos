@@ -1,0 +1,42 @@
+# secrets
+.env
+*.env
+
+# database — exclude scratch DBs but ship the bundled demo store
+*.db
+*.sqlite
+!fund_manager_tracker/fund_data.db
+
+# cache & runtime
+fund_manager_tracker/cache/
+fund_manager_tracker/logs/
+fund_manager_tracker/last_updated.json
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# vercel
+.vercel/
+
+# local-only artifacts
+_archive/
+sent_emails/
+fund_manager_tracker/reports/
+.agents/
+.claude/
+.codex/
+.pytest_cache/
+
+# os
+.DS_Store
+Thumbs.db

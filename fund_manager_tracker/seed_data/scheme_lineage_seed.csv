@@ -1,0 +1,5 @@
+old_scheme_code,old_scheme_name,new_scheme_code,new_scheme_name,event_date,event_type,notes,source_url
+101762,HDFC Equity Fund,101762,HDFC Flexi Cap Fund - Growth Plan,2018-05-01,rename_sebi_recategorization,Review exact effective date and old scheme code mapping.,https://www.sebi.gov.in/
+103098,UTI Opportunities Fund,103098,UTI Value Fund - Regular Plan - Growth Option,2018-05-01,rename_sebi_recategorization,Review exact effective date and old scheme code mapping.,https://www.sebi.gov.in/
+102594,ICICI Prudential Value Discovery Fund,102594,ICICI Prudential Value Fund (erstwhile Value Discovery Fund) - Growth,2021-01-01,rename,Review exact effective date.,https://www.sebi.gov.in/
+117560,Axis Focused 25 Fund,117560,Axis Focused Fund - Regular Plan - Growth Option,2021-09-01,rename,Review exact effective date.,https://www.sebi.gov.in/

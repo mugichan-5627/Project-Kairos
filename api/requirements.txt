@@ -1,0 +1,10 @@
+pandas>=2.0.0
+numpy>=1.26.0
+statsmodels>=0.14.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+yfinance>=0.2.40
+feedparser>=6.0
+duckdb>=0.10.0
+anthropic>=0.25.0
+tavily-python>=0.3.0

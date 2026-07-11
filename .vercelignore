@@ -1,0 +1,12 @@
+# Exclude local caches, logs, and environments from Vercel deployments
+fund_manager_tracker/cache/
+fund_manager_tracker/logs/
+fund_manager_tracker/reports/
+fund_manager_tracker/seed_data/
+fund_manager_tracker/__pycache__/
+api/__pycache__/
+.vercel/
+.git/
+venv/
+.venv/
+node_modules/

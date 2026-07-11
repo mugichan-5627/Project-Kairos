@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "builds": [
+    {
+      "src": "api/**/*.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "150mb" }
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    { "src": "/api/([^/]+)", "dest": "/api/$1.py" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron_daily",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "env": {
+    "KAIROS_EQUITY_ONLY": "true",
+    "KAIROS_MAX_NAV_SCHEMES_PER_RUN": "100",
+    "KAIROS_VRO_LIMIT_PER_RUN": "50",
+    "KAIROS_LOG_LEVEL": "INFO"
+  }
+}
