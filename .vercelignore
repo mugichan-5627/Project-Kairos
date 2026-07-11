@@ -1,4 +1,10 @@
 # Exclude local caches, logs, and environments from Vercel deployments
+.env
+*.env
+.env.*
+!.env.example
+.claude/
+.pytest_cache/
 fund_manager_tracker/cache/
 fund_manager_tracker/logs/
 fund_manager_tracker/reports/

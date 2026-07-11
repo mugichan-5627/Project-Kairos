@@ -4,6 +4,15 @@ from http.server import BaseHTTPRequestHandler
 
 import pandas as pd
 
+# Vercel's Python runtime puts /var/task on sys.path but not /var/task/api,
+# so the shared _kairos helper needs the handler's own directory added.
+import sys as _sys
+from pathlib import Path as _Path
+
+_HERE = str(_Path(__file__).resolve().parent)
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+
 from _kairos import apply_cors, bootstrap, ensure_scheme_master_loaded, read_json_body, read_sql, send_error, send_json
 from src.data.current_manager_resolver import CurrentManagerResolver
 from src.alerts.investor_alerts import fuzzy_match_scheme, register_portfolio_rows

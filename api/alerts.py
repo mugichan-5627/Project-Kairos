@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler
 
+# Vercel's Python runtime puts /var/task on sys.path but not /var/task/api,
+# so the shared _kairos helper needs the handler's own directory added.
+import sys as _sys
+from pathlib import Path as _Path
+
+_HERE = str(_Path(__file__).resolve().parent)
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+
 from _kairos import apply_cors, bootstrap, read_json_body, read_sql, require_admin, send_error, send_json
 from src.alerts.investor_alerts import smtp_status
 
