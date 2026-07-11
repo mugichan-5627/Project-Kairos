@@ -40,18 +40,46 @@ _SHARE_CLASS_TOKENS = {
     "reinvestment", "payout", "bonus", "cumulative",
 }
 _GENERIC_TOKENS = {"fund", "scheme", "mutual", "the", "of", "an", "a"}
+# Words that CAN name a fund ("Nippon India Growth Fund", "Value Fund") —
+# they count as identity when they appear BEFORE the word "fund", and as
+# share-class noise after it ("... Fund - Growth Plan").
+_AMBIGUOUS_TOKENS = {"growth", "value", "dividend"}
 
 
 def _identity_tokens(normalized: str) -> set[str]:
-    return {
-        tok for tok in normalized.split()
-        if tok not in _SHARE_CLASS_TOKENS and tok not in _GENERIC_TOKENS
-    }
+    tokens = normalized.split()
+    try:
+        fund_pos = tokens.index("fund")
+    except ValueError:
+        fund_pos = len(tokens)
+    out: set[str] = set()
+    for pos, tok in enumerate(tokens):
+        if tok in _GENERIC_TOKENS:
+            continue
+        if tok in _SHARE_CLASS_TOKENS and not (tok in _AMBIGUOUS_TOKENS and pos < fund_pos):
+            continue
+        out.add(tok)
+    return out
+
+
+# Verified scheme renames (old marketing name -> current AMFI name fragment).
+# Only entries confirmed against the live scheme master belong here.
+_RENAME_ALIASES = {
+    "axis bluechip": "axis large cap",           # renamed 2024 (SEBI categorization)
+    "parag parikh long term value": "parag parikh flexi cap",
+    "hdfc prudence": "hdfc balanced advantage",  # merged 2018
+    "hdfc top 200": "hdfc top 100",
+}
 
 
 def fuzzy_match_scheme(query: str, min_score: float = 0.65) -> SchemeMatch:
     if not query:
         return SchemeMatch(None, None, None, 0.0, "empty_query")
+    normalized_query = _norm(query)
+    for old, new in _RENAME_ALIASES.items():
+        if old in normalized_query:
+            query = normalized_query.replace(old, new)
+            break
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -82,7 +110,10 @@ def fuzzy_match_scheme(query: str, min_score: float = 0.65) -> SchemeMatch:
     for row in schemes:
         name = _norm(row["scheme_name"])
         amc = _norm(row["amc_name"])
-        c_identity = _identity_tokens(f"{amc} {name}")
+        # Identity must be extracted per-string: the AMC text ("X Mutual Fund")
+        # contains "fund", which would corrupt the positional growth/value rule
+        # if the two strings were concatenated first.
+        c_identity = _identity_tokens(name) | _identity_tokens(amc)
         if not c_identity:
             continue  # junk rows ("Growth", "Direct Plan", ...) can never match
 
@@ -93,7 +124,12 @@ def fuzzy_match_scheme(query: str, min_score: float = 0.65) -> SchemeMatch:
         # focused the candidate is on what the user typed.
         coverage_query = len(shared) / len(q_identity)
         coverage_cand = len(shared) / len(c_identity)
-        if coverage_query < 0.6 or (len(q_identity) >= 2 and len(shared) < 2):
+        if coverage_query < 0.70 or (len(q_identity) >= 2 and len(shared) < 2):
+            continue
+        # A short query fully contained in a much longer, unfocused name
+        # ("Kotak Emerging Equity" ⊂ "Kotak Global Emerging Market Overseas
+        # Equity Omni FOF") is usually the WRONG fund — reject, don't guess.
+        if len(c_identity) >= 2 * len(q_identity) + 2 and coverage_cand < 0.5:
             continue
 
         score = 0.65 * coverage_query + 0.25 * coverage_cand
