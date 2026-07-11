@@ -25,6 +25,7 @@ _BAD_NAME_WORDS = {
     "performance", "portfolio", "india", "indian", "top", "best", "rising",
     "leading", "list", "ranked", "asset", "management", "equity", "debt",
     "small", "mid", "large", "cap", "amc", "review", "returns", "nav",
+    "the", "a", "an", "is", "was", "has", "and", "with", "who", "he", "she",
 }
 
 # Titles that indicate a listicle/roundup rather than scheme-specific coverage —
@@ -202,7 +203,10 @@ class CurrentManagerResolver:
             match = pattern.search(clean)
             if not match:
                 continue
-            name = re.sub(r"\s+(?:since|from|for)\b.*$", "", match.group(1), flags=re.I).strip(" .,-")
+            name = re.sub(r"\s+(?:since|from|for)\b.*$", "", match.group(1), flags=re.I).strip(" ,-")
+            # A sentence boundary inside the capture means the regex ran past
+            # the name ("Rama Iyer Srinivasan. The") — keep the first sentence.
+            name = name.split(". ")[0].strip(" .,-")
             if _is_plausible_person_name(name):
                 return name
         return None
