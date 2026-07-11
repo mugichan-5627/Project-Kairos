@@ -65,6 +65,28 @@ class handler(BaseHTTPRequestHandler):
                 scheme_name=str(match.scheme_name),
                 amc_name=match.amc_name,
             )
+            # Manager style + expert-style impact readout (quant + qualitative)
+            manager_style = None
+            manager_impact = None
+            if current.get("manager_name"):
+                try:
+                    from src.analytics.manager_assessment import get_assessment, transition_impact_text
+
+                    assessment = get_assessment(manager_name=str(current["manager_name"]))
+                    if assessment:
+                        manager_style = {
+                            "style_label": assessment.get("style_label"),
+                            "aggression": assessment.get("aggression"),
+                            "curated": assessment.get("curated"),
+                            "summary": assessment.get("style_summary"),
+                        }
+                        manager_impact = transition_impact_text(
+                            str(current["manager_name"]),
+                            direction="departing",
+                            scheme_name=str(match.scheme_name),
+                        )["text"]
+                except Exception:
+                    pass
             rows.append({
                 "query": name,
                 "amount": amount,
@@ -77,19 +99,36 @@ class handler(BaseHTTPRequestHandler):
                 "current_manager_source_url": current.get("source_url"),
                 "current_manager_confidence": current.get("confidence_score"),
                 "current_manager_resolution": current.get("resolution_status"),
+                "manager_style": manager_style,
+                "manager_impact": manager_impact,
                 "match_status": "matched",
                 "match_score": match.score,
             })
         df = pd.DataFrame(rows)
         matched = df[df.get("match_status", "") == "matched"] if not df.empty else df
+        # Weighted risk averages ONLY holdings that actually have a score —
+        # treating "no coverage" as zero risk would understate portfolio risk.
         weighted = None
-        if not matched.empty and matched["amount"].sum() > 0:
-            weighted = float((matched["amount"] * pd.to_numeric(matched["investor_risk_score"], errors="coerce").fillna(0)).sum() / matched["amount"].sum())
+        scored_amount = 0.0
+        matched_amount = 0.0
+        if not matched.empty:
+            scores = pd.to_numeric(matched["investor_risk_score"], errors="coerce")
+            scored = matched[scores.notna()]
+            matched_amount = float(matched["amount"].sum())
+            scored_amount = float(scored["amount"].sum())
+            if scored_amount > 0:
+                weighted = float(
+                    (scored["amount"] * scores[scores.notna()]).sum() / scored_amount
+                )
+        coverage = (scored_amount / matched_amount) if matched_amount > 0 else 0.0
         send_json(
             self,
             {
                 "holdings": rows,
                 "weighted_manager_risk": weighted,
+                "risk_coverage": round(coverage, 4),
+                "scored_amount": scored_amount,
+                "matched_amount": matched_amount,
                 "registration": registration,
                 "scheme_master_status": scheme_master_status,
             },

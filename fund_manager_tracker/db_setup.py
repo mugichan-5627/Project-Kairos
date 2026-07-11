@@ -533,6 +533,23 @@ CREATE TABLE IF NOT EXISTS rolling_alpha_series (
 
 CREATE INDEX IF NOT EXISTS idx_rolling_alpha_scheme
     ON rolling_alpha_series(scheme_code, window_end_date);
+
+-- Manager style & qualitative assessment layer.
+-- derived_json holds the quantitative style tilts (factor loadings) so the
+-- narrative can always be traced back to the regression that produced it.
+CREATE TABLE IF NOT EXISTS manager_qualitative (
+    manager_id            INTEGER PRIMARY KEY,
+    canonical_name        TEXT,
+    style_label           TEXT,
+    aggression            TEXT,
+    style_summary         TEXT,
+    investment_approach   TEXT,
+    transition_note       TEXT,
+    curated               INTEGER DEFAULT 0,
+    sources_json          TEXT,
+    derived_json          TEXT,
+    updated_at            TEXT DEFAULT (datetime('now'))
+);
 """
 
 

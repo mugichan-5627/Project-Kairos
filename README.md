@@ -23,6 +23,17 @@ Backend = Python serverless handlers (one file per route under `/api`) over the 
 α_monthly    = intercept of OLS(excess_fund_return ~ MKT−RF + SMB + Value + Momentum) with HAC (Newey-West) covariance.
 RFR          = RBI 91-day T-bill, monthly time-varying (`seed_data/rfr_monthly_91d_tbill.csv`).
 Factor data  = NSE indices via yfinance (^CRSLDX, ^NSEMDCP50, ^NSEI, NV20.NS).
+Shrinkage    = Empirical-Bayes t-shrinkage on every alpha entering PAS:
+               alpha_shrunk = alpha × t² / (1 + t²)  (Jones-Shanken flavour) —
+               noisy short-window alphas are pulled toward zero before weighting.
+Style        = Returns-based style analysis (Sharpe 1992) on tenure-weighted
+               Carhart loadings: SMB → size tilt, HML → value/growth,
+               WML → momentum posture, market beta → aggression; low adj-R²
+               flags benchmark-agnostic stock pickers.
+Qualitative  = `manager_qualitative` layer: web-verified curated profiles with
+               source URLs for marquee managers (Naren, Jain, Sambre, Srinivasan,
+               Thakkar, …) + factor-derived style rows for every covered manager;
+               composed into an analyst-style transition-impact readout.
 Auto-degrade = drops factor legs with insufficient variance (e.g. WML before Apr-2017) and labels the
                returned model as "Carhart 4-factor" | "3-factor (no momentum)" | "CAPM 1-factor".
 ```

@@ -23,7 +23,7 @@ class PortableAlphaEngine:
         for _, tenure in tenures.iterrows():
             attrs = read_sql(
                 """
-                SELECT alpha_annualized FROM attribution_results
+                SELECT alpha_annualized, alpha_tstat FROM attribution_results
                 WHERE scheme_code=? AND window_type='pre' AND model_status='ok'
                 ORDER BY created_at DESC LIMIT 1
                 """,
@@ -35,7 +35,15 @@ class PortableAlphaEngine:
             end = pd.to_datetime(tenure.get("end_date"), errors="coerce")
             months = 12.0 if pd.isna(start) or pd.isna(end) else max(1.0, (end - start).days / 30.44)
             confidence = float(tenure.get("confidence_score") or 0.5)
-            alpha_rows.append({"alpha": float(attrs.iloc[0]["alpha_annualized"]), "months": months, "confidence": confidence})
+            # Empirical-Bayes t-shrinkage: noisy alphas are pulled toward zero
+            # (posterior mean = alpha * t^2 / (1 + t^2)); prevents short, lucky
+            # windows from dominating the Portable Alpha Score.
+            from src.analytics.manager_assessment import shrink_alpha
+
+            raw_alpha = float(attrs.iloc[0]["alpha_annualized"])
+            tstat = attrs.iloc[0]["alpha_tstat"]
+            shrunk = shrink_alpha(raw_alpha, None if pd.isna(tstat) else float(tstat))
+            alpha_rows.append({"alpha": shrunk, "months": months, "confidence": confidence})
         if not alpha_rows:
             return {"status": "insufficient_attribution", "manager_id": manager_id}
         df = pd.DataFrame(alpha_rows)

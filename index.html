@@ -740,6 +740,7 @@
                 <div class="metric-card" style="margin-bottom: 1.5rem; max-width: 380px;">
                     <div class="metric-label">Weighted Average Manager Risk</div>
                     <div class="risk-score-display" id="weighted-risk-score">0.0<span>/10</span></div>
+                    <div id="risk-coverage-note" style="font-size:0.72rem;color:var(--text-dim);margin-top:-1rem;margin-bottom:1rem;"></div>
                 </div>
 
                 <div class="card">
@@ -849,6 +850,16 @@
                         <div class="metric-label">Investor Risk Rating</div>
                         <div class="metric-value" id="profile-risk-rating">-</div>
                     </div>
+                </div>
+
+                <div class="card" id="assessment-card" style="display:none;border-left:2px solid var(--accent);">
+                    <h3 style="display:flex;align-items:center;gap:0.6rem;">Manager Assessment
+                        <span id="assessment-badge" style="font-size:0.65rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.2rem 0.55rem;border-radius:3px;"></span>
+                    </h3>
+                    <div id="assessment-style" style="margin-top:0.75rem;font-size:0.95rem;color:var(--text-main);"></div>
+                    <p id="assessment-summary" style="margin-top:0.6rem;font-size:0.85rem;color:var(--text-muted);line-height:1.6;"></p>
+                    <div id="assessment-impact" style="margin-top:0.9rem;padding:0.85rem 1rem;background:var(--bg-raised);border-radius:4px;font-size:0.82rem;color:var(--text-muted);line-height:1.6;border-left:2px solid var(--color-orange);"></div>
+                    <div id="assessment-sources" style="margin-top:0.75rem;font-size:0.72rem;color:var(--text-dim);"></div>
                 </div>
 
                 <div class="card">
@@ -1469,30 +1480,57 @@
                 document.getElementById('scan-loading').style.display = 'none';
                 document.getElementById('scan-results').style.display = 'block';
 
-                // Display score
+                // Display score — honest degradation: never render 0.0 for "no data"
                 const riskVal = data.weighted_manager_risk;
+                const coverage = data.risk_coverage;
                 const scoreBox = document.getElementById('weighted-risk-score');
-                scoreBox.innerHTML = riskVal !== null ? `${riskVal.toFixed(1)}<span>/10</span>` : `0.0<span>/10</span>`;
+                if (riskVal !== null && riskVal !== undefined) {
+                    scoreBox.innerHTML = `${riskVal.toFixed(1)}<span>/10</span>`;
+                    const covNote = document.getElementById('risk-coverage-note');
+                    if (covNote) covNote.textContent =
+                        `Scored on ${(coverage * 100).toFixed(0)}% of matched value — unscored holdings are excluded, not counted as zero.`;
+                } else {
+                    scoreBox.innerHTML = `<span style="font-size:1.4rem;color:var(--text-muted);font-family:Inter,sans-serif;">No risk coverage for these holdings yet</span>`;
+                    const covNote = document.getElementById('risk-coverage-note');
+                    if (covNote) covNote.textContent =
+                        'None of the matched schemes has attribution analytics in the current database.';
+                }
 
                 // Populate table
                 const tbody = document.querySelector('#scan-results-table tbody');
                 tbody.innerHTML = '';
                 data.holdings.forEach(h => {
                     const tr = document.createElement('tr');
-                    const riskCell = (h.investor_risk_score !== undefined 
-                        && h.investor_risk_score !== null) 
-                        ? `${(+h.investor_risk_score).toFixed(1)}/10` 
-                        : '<span style="color:#6b7280;font-style:italic">N/A</span>';
+                    const riskCell = (h.investor_risk_score !== undefined
+                        && h.investor_risk_score !== null)
+                        ? `${(+h.investor_risk_score).toFixed(1)}/10`
+                        : '<span style="color:#6b7280;font-style:italic" title="Scheme matched, but no attribution analytics yet — excluded from the weighted score">not covered</span>';
+                    let managerCell = 'Under review';
+                    if (h.current_manager) {
+                        const unverified = (h.current_manager_resolution || '').includes('unverified');
+                        managerCell = `${h.current_manager}${unverified ? ' <span style="color:#E8B448;font-size:0.7rem;" title="Extracted from a live web source; not yet cross-verified against the canonical manager registry">unverified</span>' : ''}`;
+                        if (h.manager_style && h.manager_style.style_label) {
+                            managerCell += `<div style="color:var(--text-dim);font-size:0.72rem;margin-top:2px;">${h.manager_style.style_label}${h.manager_style.curated ? ' ·<span style="color:#22C55E;"> verified profile</span>' : ' · derived from factor loadings'}</div>`;
+                        }
+                    }
                     tr.innerHTML = `
                         <td class="mono">${h.query}</td>
-                        <td>${h.scheme_name || 'No Direct Match'}</td>
+                        <td>${h.scheme_name || 'No match in AMFI master'}</td>
                         <td class="mono">${h.scheme_code || '-'}</td>
                         <td class="mono">₹${Number(h.amount).toLocaleString('en-IN')}</td>
-                        <td>${h.current_manager || 'Unknown'}</td>
+                        <td>${managerCell}</td>
                         <td class="mono"><strong>${riskCell}</strong></td>
                         <td><span class="risk-pill ${h.match_status === 'matched' ? 'low' : 'high'}">${h.match_status}</span></td>
                     `;
                     tbody.appendChild(tr);
+                    if (h.manager_impact) {
+                        const trImpact = document.createElement('tr');
+                        trImpact.innerHTML = `
+                            <td colspan="7" style="background:var(--bg-raised);font-size:0.8rem;color:var(--text-muted);line-height:1.55;border-left:2px solid var(--accent);">
+                                <strong style="color:var(--text-main);">Analyst readout</strong> — ${h.manager_impact}
+                            </td>`;
+                        tbody.appendChild(trImpact);
+                    }
                 });
             })
             .catch(err => {
@@ -1683,6 +1721,44 @@
                     document.getElementById('profile-label').textContent = latest.label || 'N/A';
                     const riskScore = finiteNumber(latest.investor_risk_score);
                     document.getElementById('profile-risk-rating').textContent = riskScore === null ? 'N/A' : `${riskScore.toFixed(1)}/10`;
+
+                    // Manager assessment card (quant style + qualitative profile)
+                    const card = document.getElementById('assessment-card');
+                    const a = data.assessment;
+                    if (a && card) {
+                        card.style.display = 'block';
+                        const badge = document.getElementById('assessment-badge');
+                        if (a.curated) {
+                            badge.textContent = 'web-verified profile';
+                            badge.style.background = 'rgba(34,197,94,0.12)';
+                            badge.style.color = '#22C55E';
+                        } else {
+                            badge.textContent = 'derived from factor loadings';
+                            badge.style.background = 'rgba(59,130,246,0.12)';
+                            badge.style.color = 'var(--accent)';
+                        }
+                        document.getElementById('assessment-style').innerHTML =
+                            `<strong>${a.style_label || 'Unclassified'}</strong>` +
+                            (a.aggression ? ` &nbsp;·&nbsp; risk posture: <span style="color:var(--color-orange);">${a.aggression}</span>` : '') +
+                            (a.investment_approach ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">${a.investment_approach}</div>` : '');
+                        document.getElementById('assessment-summary').textContent = a.style_summary || '';
+                        const impactEl = document.getElementById('assessment-impact');
+                        if (data.transition_impact) {
+                            impactEl.style.display = 'block';
+                            impactEl.innerHTML = `<strong style="color:var(--text-main);">If this manager moves:</strong> ${data.transition_impact}`;
+                        } else {
+                            impactEl.style.display = 'none';
+                        }
+                        const srcEl = document.getElementById('assessment-sources');
+                        if (Array.isArray(a.sources) && a.sources.length && a.sources[0].startsWith('http')) {
+                            srcEl.innerHTML = 'Sources: ' + a.sources.map((u, i) =>
+                                `<a href="${u}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">[${i + 1}]</a>`).join(' ');
+                        } else {
+                            srcEl.textContent = 'Derived from Kairos Carhart attribution results (tenure-weighted factor loadings, EB-shrunk alpha).';
+                        }
+                    } else if (card) {
+                        card.style.display = 'none';
+                    }
 
                     // Draw Career Gantt Chart
                     drawTimelineChart(data.history);

@@ -91,11 +91,25 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 attribution = []
 
+            # Qualitative + shrinkage-adjusted quantitative assessment.
+            assessment = None
+            impact = None
+            try:
+                from src.analytics.manager_assessment import get_assessment, transition_impact_text
+
+                plain_name = manager_key.split("|")[0].strip()
+                assessment = get_assessment(manager_name=plain_name)
+                impact = transition_impact_text(plain_name, direction="departing")["text"]
+            except Exception:
+                pass
+
             send_json(self, {
                 "history": history,
                 "score": score,
                 "betas": betas,
-                "attribution": attribution
+                "attribution": attribution,
+                "assessment": assessment,
+                "transition_impact": impact,
             })
 
         except Exception as exc:

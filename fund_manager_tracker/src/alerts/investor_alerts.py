@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import html
 import os
+import re
 import smtplib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -26,66 +27,101 @@ class SchemeMatch:
 
 
 def _norm(value: str | None) -> str:
-    return " ".join(str(value or "").lower().replace("-", " ").split())
+    cleaned = re.sub(r"[^a-z0-9 ]", " ", str(value or "").lower().replace("-", " "))
+    return " ".join(cleaned.split())
 
 
-def fuzzy_match_scheme(query: str, min_score: float = 0.72) -> SchemeMatch:
+# Share-class / plan words identify a variant of a scheme, not the scheme itself.
+# "Quant Small Cap Fund - Growth Plan": identity = {quant, small, cap};
+# share-class = {growth, plan}. Matching on identity prevents a scheme literally
+# named "Growth" from hijacking every growth-plan query.
+_SHARE_CLASS_TOKENS = {
+    "plan", "option", "direct", "regular", "growth", "idcw", "dividend",
+    "reinvestment", "payout", "bonus", "cumulative",
+}
+_GENERIC_TOKENS = {"fund", "scheme", "mutual", "the", "of", "an", "a"}
+
+
+def _identity_tokens(normalized: str) -> set[str]:
+    return {
+        tok for tok in normalized.split()
+        if tok not in _SHARE_CLASS_TOKENS and tok not in _GENERIC_TOKENS
+    }
+
+
+def fuzzy_match_scheme(query: str, min_score: float = 0.65) -> SchemeMatch:
     if not query:
         return SchemeMatch(None, None, None, 0.0, "empty_query")
-    
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT scheme_code, scheme_name, amc_name FROM scheme_master")
         schemes = cursor.fetchall()
-        
+
     if not schemes:
         return SchemeMatch(None, None, None, 0.0, "scheme_master_empty")
-        
+
     q = _norm(query)
-    q_words = set(q.split())
-    if not q_words:
+    q_identity = _identity_tokens(q)
+    q_share = set(q.split()) & _SHARE_CLASS_TOKENS
+    if not q_identity:
         return SchemeMatch(None, None, None, 0.0, "empty_query")
-        
-    candidates = []
-    for row in schemes:
-        scheme_name = row["scheme_name"]
-        amc_name = row["amc_name"]
-        name = _norm(scheme_name)
-        amc_name_norm = _norm(amc_name)
-        
-        # Check exact containment or word overlap
-        if q in name or name in q:
-            overlap = 100
-        else:
-            # Simple word inclusion check is very fast
-            overlap = sum(1 for w in q_words if w in name or w in amc_name_norm)
-            
-        if overlap > 0:
-            candidates.append((overlap, row, name, amc_name_norm))
-            
-    if not candidates:
-        return SchemeMatch(None, None, None, 0.0, "unmatched")
-        
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    top_candidates = candidates[:50]
-    
+
+    nav_covered: set[str] = set()
+    try:
+        nav_covered = {
+            str(r["scheme_code"])
+            for r in read_sql("SELECT DISTINCT scheme_code FROM nav_history").to_dict("records")
+        }
+    except Exception:
+        pass
+
     best = None
+    best_key: tuple = (-1.0,)
     best_score = 0.0
-    for overlap, row, name, amc_name_norm in top_candidates:
-        score = max(
-            SequenceMatcher(None, q, name).ratio(),
-            SequenceMatcher(None, q, f"{amc_name_norm} {name}").ratio(),
+    for row in schemes:
+        name = _norm(row["scheme_name"])
+        amc = _norm(row["amc_name"])
+        c_identity = _identity_tokens(f"{amc} {name}")
+        if not c_identity:
+            continue  # junk rows ("Growth", "Direct Plan", ...) can never match
+
+        shared = q_identity & c_identity
+        if not shared:
+            continue
+        # How much of what the user typed is present in the candidate, and how
+        # focused the candidate is on what the user typed.
+        coverage_query = len(shared) / len(q_identity)
+        coverage_cand = len(shared) / len(c_identity)
+        if coverage_query < 0.6 or (len(q_identity) >= 2 and len(shared) < 2):
+            continue
+
+        score = 0.65 * coverage_query + 0.25 * coverage_cand
+        # Share-class alignment as a mild tiebreaker, never a substitute for identity.
+        c_share = set(name.split()) & _SHARE_CLASS_TOKENS
+        if q_share:
+            share_hit = len(q_share & c_share) / len(q_share)
+            score += 0.10 * share_hit
+        else:
+            score += 0.05  # nothing requested; neutral
+        # Word-order / typo similarity refinement.
+        score = 0.85 * score + 0.15 * SequenceMatcher(None, q, f"{amc} {name}".strip()).ratio()
+
+        key = (
+            round(score, 6),
+            1 if str(row["scheme_code"]) in nav_covered else 0,  # prefer analytics-capable
+            1 if "direct" not in name.split() else 0,            # default to regular plan
+            -len(c_identity),                                    # prefer tighter names
         )
-        if q in name or name in q:
-            score = max(score, 0.95)
-        if score > best_score:
-            best_score = score
+        if key > best_key:
+            best_key = key
             best = row
-            
+            best_score = score
+
     if best is None or best_score < min_score:
-        return SchemeMatch(None, None, None, best_score, "unmatched")
-        
-    return SchemeMatch(str(best["scheme_code"]), best["scheme_name"], best["amc_name"], best_score, "matched")
+        return SchemeMatch(None, None, None, round(best_score, 4), "unmatched")
+
+    return SchemeMatch(str(best["scheme_code"]), best["scheme_name"], best["amc_name"], round(best_score, 4), "matched")
 
 
 def register_portfolio_rows(

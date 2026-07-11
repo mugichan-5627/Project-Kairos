@@ -20,19 +20,35 @@ _MANAGER_PATTERNS = [
 ]
 
 _BAD_NAME_WORDS = {
-    "fund",
-    "manager",
-    "managed",
-    "scheme",
-    "growth",
-    "direct",
-    "regular",
-    "mutual",
-    "latest",
-    "current",
-    "performance",
-    "portfolio",
+    "fund", "funds", "manager", "managers", "managed", "scheme", "schemes",
+    "growth", "direct", "regular", "mutual", "latest", "current",
+    "performance", "portfolio", "india", "indian", "top", "best", "rising",
+    "leading", "list", "ranked", "asset", "management", "equity", "debt",
+    "small", "mid", "large", "cap", "amc", "review", "returns", "nav",
 }
+
+# Titles that indicate a listicle/roundup rather than scheme-specific coverage —
+# these pages name many managers and extraction from them is unreliable.
+_LISTICLE_TITLE_RE = re.compile(r"\b(top|best|\d+\s+(?:best|top)|ranked|list of)\b", re.I)
+
+_NAME_WORD_RE = re.compile(r"^[A-Z][a-z.'-]+$|^[A-Z]\.?$")
+_NAME_PARTICLES = {"da", "de", "van", "von", "bin", "al", "el"}  # Sunaina da Cunha
+
+
+def _is_plausible_person_name(name: str) -> bool:
+    """Every word properly capitalized (lowercase name particles allowed),
+    2-4 words, no domain stopwords.
+
+    The extraction regexes run case-insensitively to catch lead-in phrases,
+    which silently disables their [A-Z] anchors — this validator restores the
+    capitalization requirement (fixes 'rising in India' being read as a name).
+    """
+    words = name.split()
+    if not 2 <= len(words) <= 4:
+        return False
+    if any(w.lower() in _BAD_NAME_WORDS for w in words):
+        return False
+    return all(_NAME_WORD_RE.match(w) or w in _NAME_PARTICLES for w in words)
 
 
 @dataclass
@@ -136,19 +152,41 @@ class CurrentManagerResolver:
         if answer:
             candidates.append({"text": answer, "url": None, "source_title": "Tavily answer"})
 
+        known = self._known_manager_names()
         for candidate in candidates:
+            title = str(candidate.get("source_title") or "")
+            if _LISTICLE_TITLE_RE.search(title):
+                continue  # roundup pages name many managers; skip
             manager = self._extract_manager_name(candidate["text"])
-            if manager:
-                return {
-                    "manager_name": manager,
-                    "confirmed_date": self._extract_since_date(candidate["text"]),
-                    "source": "live_search",
-                    "source_url": candidate.get("url"),
-                    "source_title": candidate.get("source_title"),
-                    "confidence_score": 0.68 if candidate.get("url") else 0.58,
-                    "resolution_status": "live_search",
-                }
+            if not manager:
+                continue
+            # Cross-validation against the canonical manager universe raises
+            # confidence; an unknown name from a live page stays tentative.
+            recognized = manager.lower() in known
+            confidence = 0.80 if recognized else (0.62 if candidate.get("url") else 0.5)
+            return {
+                "manager_name": manager,
+                "confirmed_date": self._extract_since_date(candidate["text"]),
+                "source": "live_search",
+                "source_url": candidate.get("url"),
+                "source_title": candidate.get("source_title"),
+                "confidence_score": confidence,
+                "resolution_status": "live_search" if recognized else "live_search_unverified",
+            }
         return None
+
+    def _known_manager_names(self) -> set[str]:
+        try:
+            rows = read_sql(
+                """
+                SELECT canonical_name AS name FROM manager_identity
+                UNION SELECT alias_name AS name FROM manager_alias
+                """,
+                db_path=self.db_path,
+            )
+            return {str(n).lower() for n in rows["name"].dropna()}
+        except Exception:
+            return set()
 
     def _query(self, scheme_name: str, amc_name: str | None) -> str:
         compact_name = re.sub(r"\s+-\s+(Direct|Regular).*", "", scheme_name, flags=re.I)
@@ -165,8 +203,7 @@ class CurrentManagerResolver:
             if not match:
                 continue
             name = re.sub(r"\s+(?:since|from|for)\b.*$", "", match.group(1), flags=re.I).strip(" .,-")
-            words = name.split()
-            if 2 <= len(words) <= 4 and not any(w.lower() in _BAD_NAME_WORDS for w in words):
+            if _is_plausible_person_name(name):
                 return name
         return None
 
