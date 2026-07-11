@@ -1,3 +1,7 @@
+# Serverless bundle — keep lean; Vercel caps total function size at 500 MB.
+# duckdb (dead module), tavily-python (Tavily uses plain requests), and
+# anthropic (LLM router degrades to NVIDIA/heuristic) are intentionally
+# omitted here; the full local dev set lives in fund_manager_tracker/requirements.txt.
 pandas>=2.0.0
 numpy>=1.26.0
 statsmodels>=0.14.0
@@ -5,6 +9,3 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 yfinance>=0.2.40
 feedparser>=6.0
-duckdb>=0.10.0
-anthropic>=0.25.0
-tavily-python>=0.3.0
